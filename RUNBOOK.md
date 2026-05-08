@@ -2,6 +2,78 @@
 
 ---
 
+## Planned v2 — Shared Learning System
+
+### Goal
+The system learns from every finished game. Over time, calibration requires
+fewer manual anchor points because the model already knows where stoppages
+cluster for each league.
+
+### How it works
+
+**After each game**, the system automatically extracts derived metrics from
+the confirmed CALIBRATION_ANCHORS and writes them to `game_stats/{game_id}.json`:
+
+```json
+{
+  "game_id": "2836518",
+  "league": "mpbl",
+  "date": "2025-05-08",
+  "quarter_breaks": [185, 710, 192],
+  "segments": [
+    {"quarter": 1, "gt_from": "09:44", "gt_to": "08:53", "rtf": 1.12},
+    {"quarter": 1, "gt_from": "08:53", "gt_to": "07:22", "rtf": 1.31},
+    ...
+  ]
+}
+```
+
+Each segment's RTF (real seconds ÷ game-clock seconds) reveals stoppages:
+- RTF ~1.0 = pure running clock, no stoppages
+- RTF ~1.5–2.0 = normal play with minor stoppages
+- RTF ~4.0+ = timeout, challenge, or review inside that segment
+
+**Sharing is via git — no server needed:**
+
+```
+finish game → game_stats/{game_id}.json written → git push
+                                                        ↓
+other users git pull → receive all contributed game stats
+                                                        ↓
+new_game.py reads game_stats/*.json → computes league averages
+         → suggests smarter defaults for REAL_TIME_FACTOR,
+           QUARTER_BREAK_SECONDS, HALFTIME_BREAK_SECONDS
+```
+
+Each game is its own file so there are never merge conflicts. The more
+users contribute, the richer the dataset becomes — passively, through
+normal git workflow.
+
+**What the model learns per league over time:**
+
+```
+Q1 early (10:00→07:00)  avg RTF: 1.3   (few stoppages, running clock)
+Q1 mid   (07:00→04:00)  avg RTF: 1.8
+Q1 late  (04:00→00:00)  avg RTF: 2.4   (more fouls, timeouts pile up)
+Q4 late  (02:00→00:00)  avg RTF: 3.5+  (intentional fouls, reviews)
+```
+
+**End state:** new games need only 1–2 anchors per quarter to confirm the
+model, rather than 5–6 to derive it from scratch.
+
+### Files to build
+- `game_stats/` — folder committed to repo, one JSON per game
+- `analyze.py` — reads game_stats/*.json, computes per-league averages
+- Updated `new_game.py` — pulls latest averages and pre-fills defaults
+- Updated `vod_replay.py --calibrate` — writes game_stats file on completion
+
+### Design decisions to confirm before building
+- Should game_stats be on `main` or a dedicated `data` branch?
+- Minimum number of anchors required before a game's stats are trusted?
+- How to handle outlier games (broadcast delays, technical issues)?
+
+---
+
 ## FOR CLAUDE — READ THIS FIRST
 
 If you are a Claude instance (on any machine) helping with this project:
