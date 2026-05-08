@@ -379,16 +379,19 @@ def main():
         last_video_secs = 0  # track to catch inverted entries
 
         for evt in sikat_events:
-            period = evt.get("period")
-            gt     = evt.get("gt", "00:00")
-            player = evt.get("player", "Unknown")
-            a_type = evt.get("actionType", "2pt")
-            sub    = evt.get("subType", "")
-            vid_ts = event_video_timestamp(period, gt)
+            period  = evt.get("period")
+            gt      = evt.get("gt", "00:00")
+            player  = evt.get("player", "Unknown")
+            a_type  = evt.get("actionType", "2pt")
+            sub     = evt.get("subType", "")
+            vid_ts  = event_video_timestamp(period, gt)
+            team_s, opp_s = _scores(evt)
+            score_tag = f"{config.TEAM.upper()} {team_s} - {opp_s} OPP"
 
             while True:
                 raw = input(
                     f"  Q{period} {gt}  {player} ({a_type} {sub})"
+                    f"  [{score_tag}]"
                     f"  estimated {_fmt(vid_ts)}"
                     f"  → actual [Enter=correct]: "
                 ).strip()
