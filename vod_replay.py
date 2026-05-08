@@ -1,0 +1,499 @@
+#!/usr/bin/env python3
+"""
+vod_replay.py — SiKAT Highlight Generator for Completed / Archived Games
+=========================================================================
+Downloads the YouTube VOD once, then uses the FIBA pbp data to cut a clip
+for every SiKAT scoring play and compile per-quarter highlight reels.
+
+Timestamp mapping
+-----------------
+Uses piecewise linear interpolation between CALIBRATION_ANCHORS defined in
+config.py. Each anchor is a confirmed (video_seconds, quarter, game_clock)
+triple. Between two known anchors the local real-time factor is derived
+exactly. Beyond the last anchor REAL_TIME_FACTOR is used to extrapolate.
+
+Recommended workflow per quarter
+---------------------------------
+    1. python3 vod_replay.py --dry-run --quarters N
+       See estimated timestamps for all plays.
+
+    2. python3 vod_replay.py --calibrate --quarters N
+       Verify each play interactively. Provide the actual video time for any
+       that look wrong. Anchors are written to config.py automatically.
+
+    3. python3 vod_replay.py --quarters N --skip-download
+       Cut clips and compile the highlight reel.
+"""
+
+import argparse
+import logging
+import os
+import subprocess
+import sys
+import threading
+from pathlib import Path
+from typing import List, Optional
+
+import requests
+
+import config
+from fiba_poller import ScoringEvent, QuarterEndEvent, _fetch_data, _scores, _points_for
+from clipper import Clipper
+from stream_recorder import StreamRecorder
+from publisher import Publisher
+from audio_verifier import verify as audio_verify, move_to_review
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("vod_replay")
+
+VOD_FILE = os.path.join(config.RECORDING_DIR, "stream.mp4")
+
+
+# ── Anchor table ─────────────────────────────────────────────────────────────
+
+def _parse_gt(gt: str) -> int:
+    """Parse 'MM:SS' game clock string → seconds remaining."""
+    try:
+        m, s = gt.split(":")
+        return int(m) * 60 + int(s)
+    except (ValueError, IndexError):
+        return 0
+
+
+def _quarter_period_length(period: int) -> int:
+    """Game-clock seconds in a period."""
+    return config.OT_PERIOD_LENGTH * 60 if period > 4 else config.PERIOD_LENGTH * 60
+
+
+def _build_anchor_table() -> list:
+    """
+    Build a sorted list of (video_seconds, absolute_game_seconds) pairs from:
+      1. The tip-off (always first)
+      2. CALIBRATION_ANCHORS from config
+
+    'absolute_game_seconds' counts continuously from the tip-off, ignoring
+    breaks, so it purely represents game-clock progress.
+    """
+    period_len = config.PERIOD_LENGTH * 60
+
+    def to_absolute(quarter: int, gt_str: str) -> int:
+        """Convert (quarter, game_clock_remaining) → absolute game seconds."""
+        elapsed_in_q = period_len - _parse_gt(gt_str)
+        return (quarter - 1) * period_len + elapsed_in_q
+
+    table = [(config.TIPOFF_VIDEO_SECONDS, 0)]  # tip-off anchor
+
+    for video_sec, quarter, gt_str in config.CALIBRATION_ANCHORS:
+        abs_sec = to_absolute(quarter, gt_str)
+        table.append((video_sec, abs_sec))
+
+    # Sort by absolute game seconds
+    table.sort(key=lambda x: x[1])
+    return table
+
+
+def event_video_timestamp(period: int, gt: str) -> float:
+    """
+    Convert a pbp entry's (period, gt) to a video timestamp (seconds).
+
+    Uses piecewise linear interpolation between calibration anchors.
+    Beyond the last anchor, extrapolates with config.REAL_TIME_FACTOR.
+    Breaks between quarters are handled by adding the appropriate break
+    duration once per quarter boundary crossed.
+    """
+    period_len = config.PERIOD_LENGTH * 60
+    gt_remaining = _parse_gt(gt)
+    elapsed_in_q = period_len - gt_remaining
+    # Absolute game seconds (pure game-clock progress, no breaks)
+    target_abs = (period - 1) * period_len + elapsed_in_q
+
+    # Accumulated break time before this quarter
+    def breaks_before(q: int) -> float:
+        total = 0.0
+        for i in range(1, q):
+            total += (config.HALFTIME_BREAK_SECONDS
+                      if i == 2 else config.QUARTER_BREAK_SECONDS)
+        return total
+
+    table = _build_anchor_table()
+
+    # Find the two anchors that bracket target_abs
+    for i in range(len(table) - 1):
+        v0, a0 = table[i]
+        v1, a1 = table[i + 1]
+        if a0 <= target_abs <= a1:
+            # Interpolate linearly between these two anchors
+            frac = (target_abs - a0) / (a1 - a0)
+            return v0 + frac * (v1 - v0)
+
+    # Extrapolate beyond last anchor with REAL_TIME_FACTOR + break offsets
+    v_last, a_last = table[-1]
+    # Which quarter did the last anchor fall in?
+    last_q = a_last // period_len + 1
+    target_q = period
+
+    extra_video = 0.0
+    for q in range(last_q, target_q):
+        remaining_in_q = period_len - (a_last - (q - 1) * period_len) if q == last_q else period_len
+        extra_video += remaining_in_q * config.REAL_TIME_FACTOR
+        extra_video += (config.HALFTIME_BREAK_SECONDS if q == 2 else config.QUARTER_BREAK_SECONDS)
+
+    game_secs_in_target_q = elapsed_in_q if period == target_q else elapsed_in_q
+    if target_q > last_q:
+        extra_video += elapsed_in_q * config.REAL_TIME_FACTOR
+    else:
+        extra_video += (target_abs - a_last) * config.REAL_TIME_FACTOR
+
+    return v_last + extra_video
+
+
+# ── Calibration helpers ───────────────────────────────────────────────────────
+
+def _parse_video_time(s: str) -> Optional[int]:
+    """Parse user-entered video time to seconds. Handles M:SS, MM:SS, H:MM:SS."""
+    parts = s.strip().split(":")
+    try:
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    except ValueError:
+        pass
+    return None
+
+
+def _append_anchors_to_config(new_anchors: list) -> None:
+    """Insert new calibration anchors into config.py before the closing ]."""
+    if not new_anchors:
+        return
+    with open("config.py", "r") as f:
+        content = f.read()
+
+    lines = []
+    for video_secs, quarter, gt in new_anchors:
+        lines.append(f"    ({video_secs}, {quarter}, \"{gt}\"),  # confirmed")
+
+    # Find the closing ] of CALIBRATION_ANCHORS
+    start = content.find("CALIBRATION_ANCHORS")
+    end   = content.find("\n]", start)
+    if end == -1:
+        log.error("Could not find CALIBRATION_ANCHORS closing bracket in config.py")
+        return
+
+    new_content = content[:end] + "\n" + "\n".join(lines) + content[end:]
+    with open("config.py", "w") as f:
+        f.write(new_content)
+
+    # Update in-memory config so subsequent estimates use the new anchors
+    for video_secs, quarter, gt in new_anchors:
+        config.CALIBRATION_ANCHORS.append((video_secs, quarter, gt))
+
+    log.info("config.py updated with %d new anchor(s).", len(new_anchors))
+
+
+def _fmt(video_secs: float) -> str:
+    """Format video seconds as M:SS or H:MM:SS."""
+    total = int(video_secs)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+# ── VOD download ──────────────────────────────────────────────────────────────
+
+def download_vod(url: str, output: str) -> bool:
+    Path(config.RECORDING_DIR).mkdir(exist_ok=True)
+    log.info("Downloading VOD → %s  (this may take a while…)", output)
+    cmd = [
+        "yt-dlp",
+        "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "--merge-output-format", "mp4",
+        "-o", output,
+        url,
+    ]
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        log.error("yt-dlp download failed (exit %d).", result.returncode)
+        return False
+    log.info("Download complete: %s", output)
+    return True
+
+
+# ── Clip helper (direct ffmpeg, no StreamRecorder needed for VOD) ─────────────
+
+def cut_clip(video_file: str, start: float, duration: float, output: str) -> bool:
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-loglevel", "warning",
+        "-ss", f"{max(0, start):.3f}",
+        "-i", video_file,
+        "-t", f"{duration:.3f}",
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        "-y", output,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        log.error("ffmpeg error:\n%s", result.stderr[-600:])
+        return False
+    return True
+
+
+def compile_quarter(quarter: int, clip_paths: List[str]) -> Optional[str]:
+    if not clip_paths:
+        log.warning("Q%d: no clips to compile.", quarter)
+        return None
+    import time
+    date_str  = time.strftime("%Y%m%d")
+    quarter_dir = os.path.join(config.HIGHLIGHTS_DIR, config.LEAGUE, config.TEAM, config.OPPONENT, str(quarter))
+    Path(quarter_dir).mkdir(parents=True, exist_ok=True)
+    output     = os.path.join(quarter_dir, f"SiKAT_Q{quarter}_{date_str}.mp4")
+    concat_txt = os.path.join(quarter_dir, f"concat_Q{quarter}.txt")
+
+    with open(concat_txt, "w") as f:
+        for p in clip_paths:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+
+    cmd = [
+        "ffmpeg", "-loglevel", "warning",
+        "-f", "concat", "-safe", "0",
+        "-i", concat_txt,
+        "-c", "copy", "-y", output,
+    ]
+    log.info("Compiling Q%d highlight: %d clips → %s", quarter, len(clip_paths), output)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    os.remove(concat_txt)
+
+    if result.returncode != 0:
+        log.error("Compile failed:\n%s", result.stderr[-600:])
+        return None
+    log.info("Q%d highlight ready: %s", quarter, output)
+    return output
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="SiKAT VOD Highlight Replay")
+    parser.add_argument("--skip-download", action="store_true",
+                        help=f"Reuse existing {VOD_FILE} instead of downloading")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print estimated timestamps only, no ffmpeg")
+    parser.add_argument("--quarters", nargs="+", type=int, default=[1, 2, 3, 4],
+                        help="Which quarters to process (default: 1 2 3 4)")
+    parser.add_argument("--min-clock", default=None,
+                        help="Skip plays with less game clock than this (MM:SS). "
+                             "Use when the stream ends before the quarter finishes.")
+    parser.add_argument("--calibrate", action="store_true",
+                        help="Interactive mode: verify each play's timestamp and "
+                             "write confirmed anchors to config.py before cutting clips.")
+    args = parser.parse_args()
+
+    log.info("═" * 60)
+    log.info("  SiKAT VOD Replay — Game %s", config.GAME_ID)
+    log.info("  Video  : %s", config.YOUTUBE_STREAM_URL)
+    log.info("  Tip-off: %ds into video (%dm%02ds)",
+             config.TIPOFF_VIDEO_SECONDS,
+             config.TIPOFF_VIDEO_SECONDS // 60,
+             config.TIPOFF_VIDEO_SECONDS % 60)
+    log.info("  Quarters: %s", args.quarters)
+    log.info("═" * 60)
+
+    # ── Download VOD ──────────────────────────────────────────────────────────
+    if not args.dry_run:
+        if args.skip_download and os.path.isfile(VOD_FILE):
+            log.info("Reusing existing file: %s", VOD_FILE)
+        else:
+            if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
+                sys.exit(1)
+
+    # ── Fetch pbp data ────────────────────────────────────────────────────────
+    log.info("Fetching FIBA play-by-play data…")
+    data = _fetch_data()
+    if not data:
+        log.error("Could not fetch FIBA data. Exiting.")
+        sys.exit(1)
+
+    pbp = sorted(data.get("pbp") or [], key=lambda e: e.get("actionNumber", 0))
+
+    clip_types = ["2pt", "3pt"]
+    if config.INCLUDE_FREETHROWS:
+        clip_types.append("freethrow")
+
+    min_clock_secs = _parse_gt(args.min_clock) if args.min_clock else 0
+
+    sikat_events = [
+        e for e in pbp
+        if e.get("tno") == config.TEAM_TNO
+        and int(e.get("success", 0)) == 1
+        and int(e.get("scoring", 0)) == 1
+        and e.get("actionType") in clip_types
+        and e.get("period") in args.quarters
+        and _parse_gt(e.get("gt", "00:00")) >= min_clock_secs
+    ]
+
+    log.info("Found %d SiKAT scoring plays across Q%s (freethrows %s)",
+             len(sikat_events), args.quarters,
+             "included" if config.INCLUDE_FREETHROWS else "excluded")
+
+    # ── Dry-run ───────────────────────────────────────────────────────────────
+    if args.dry_run:
+        for evt in sikat_events:
+            period = evt.get("period")
+            gt     = evt.get("gt", "00:00")
+            player = evt.get("player", "Unknown")
+            shirt  = evt.get("shirtNumber", "")
+            a_type = evt.get("actionType", "2pt")
+            sub    = evt.get("subType", "")
+            qualif = ", ".join(evt.get("qualifier") or [])
+            vid_ts = event_video_timestamp(period, gt)
+            log.info(
+                "Q%d %s  #%s %-20s  %-10s %-18s  [%s]  → video ~%s",
+                period, gt, shirt, player, a_type, sub, qualif, _fmt(vid_ts),
+            )
+        log.info("[dry-run] No files written.")
+        print("\n── Next step ────────────────────────────────────────────────")
+        print("  Verify the timestamps above in the YouTube video, then run:")
+        print(f"  python3 vod_replay.py --calibrate --quarters {' '.join(str(q) for q in args.quarters)}")
+        print("  This will let you correct any wrong timestamps before cutting.")
+        print("─────────────────────────────────────────────────────────────\n")
+        return
+
+    # ── Calibrate mode ────────────────────────────────────────────────────────
+    if args.calibrate:
+        print("\n" + "=" * 62)
+        print("  CALIBRATION — Q" + "/Q".join(str(q) for q in args.quarters))
+        print("  Open the YouTube video alongside this prompt.")
+        print("  For each play: press Enter if the estimate is correct,")
+        print("  or type the actual video time (e.g.  7:39  or  1:02:07).")
+        print("=" * 62 + "\n")
+
+        new_anchors = []
+        last_video_secs = 0  # track to catch inverted entries
+
+        for evt in sikat_events:
+            period = evt.get("period")
+            gt     = evt.get("gt", "00:00")
+            player = evt.get("player", "Unknown")
+            a_type = evt.get("actionType", "2pt")
+            sub    = evt.get("subType", "")
+            vid_ts = event_video_timestamp(period, gt)
+
+            while True:
+                raw = input(
+                    f"  Q{period} {gt}  {player} ({a_type} {sub})"
+                    f"  estimated {_fmt(vid_ts)}"
+                    f"  → actual [Enter=correct]: "
+                ).strip()
+                if not raw:
+                    last_video_secs = int(vid_ts)
+                    break  # estimate accepted, no anchor needed
+                actual = _parse_video_time(raw)
+                if actual is not None:
+                    if actual <= last_video_secs:
+                        print(f"    WARNING: {_fmt(actual)} is not after the previous play at {_fmt(last_video_secs)}.")
+                        print(f"    Video timestamps must increase as the game progresses.")
+                        print(f"    Please re-check the video and try again.")
+                        continue
+                    new_anchors.append((actual, period, gt))
+                    config.CALIBRATION_ANCHORS.append((actual, period, gt))
+                    last_video_secs = actual
+                    break
+                print("    Invalid format. Use M:SS, MM:SS, or H:MM:SS (e.g. 1:07:39).")
+
+        if new_anchors:
+            _append_anchors_to_config(new_anchors)
+            print(f"\n  {len(new_anchors)} anchor(s) saved to config.py.")
+            print("\n  Updated estimates:")
+            for evt in sikat_events:
+                period = evt.get("period")
+                gt     = evt.get("gt", "00:00")
+                player = evt.get("player", "Unknown")
+                a_type = evt.get("actionType", "2pt")
+                vid_ts = event_video_timestamp(period, gt)
+                print(f"    Q{period} {gt}  {player} ({a_type})  → {_fmt(vid_ts)}")
+        else:
+            print("\n  No corrections made.")
+
+        print("\n── Next step ────────────────────────────────────────────────")
+        qs = ' '.join(str(q) for q in args.quarters)
+        print(f"  If all timestamps look good, generate the clips:")
+        min_flag = f" --min-clock {args.min_clock}" if args.min_clock else ""
+        print(f"  python3 vod_replay.py --quarters {qs} --skip-download{min_flag}")
+        print("  To calibrate again with more anchors, re-run --calibrate.")
+        print("─────────────────────────────────────────────────────────────\n")
+        return
+
+    # ── Process each scoring play ─────────────────────────────────────────────
+    publisher = Publisher()
+    quarter_clips: dict = {}
+
+    for evt in sikat_events:
+        period = evt.get("period")
+        gt     = evt.get("gt", "00:00")
+        player = evt.get("player", "Unknown")
+        shirt  = evt.get("shirtNumber", "")
+        a_type = evt.get("actionType", "2pt")
+        sub    = evt.get("subType", "")
+        qualif = ", ".join(evt.get("qualifier") or [])
+
+        vid_ts   = event_video_timestamp(period, gt)
+        start    = vid_ts - config.CLIP_LEAD_SECONDS
+        duration = config.CLIP_LEAD_SECONDS + config.CLIP_TAIL_SECONDS
+
+        log.info(
+            "Q%d %s  #%s %-20s  %-10s %-18s  [%s]  → video ~%s",
+            period, gt, shirt, player, a_type, sub, qualif, _fmt(vid_ts),
+        )
+
+        safe_player = "".join(c if c.isalnum() else "_" for c in player)
+        gt_tag      = gt.replace(":", "")
+        clip_name   = f"Q{period}_{gt_tag}_{safe_player}_{a_type}.mp4"
+        clip_path   = os.path.join(config.CLIPS_DIR, config.LEAGUE, config.TEAM, config.OPPONENT, clip_name)
+
+        ok = cut_clip(VOD_FILE, start, duration, clip_path)
+        if not ok:
+            log.warning("Skipping clip for %s at ~%s", player, _fmt(vid_ts))
+            continue
+
+        result = audio_verify(clip_path, player_name=player)
+        if result.passed:
+            log.info("  AUDIO PASS  %-20s  %s", player, result.reason)
+            quarter_clips.setdefault(period, []).append(clip_path)
+        else:
+            log.warning("  AUDIO FAIL  %-20s  %s", player, result.reason)
+            if result.transcript:
+                log.warning("  Transcript: %s", result.transcript)
+            move_to_review(clip_path)
+
+    # ── Compile quarter highlight reels ───────────────────────────────────────
+    for q in sorted(quarter_clips):
+        output = compile_quarter(q, quarter_clips[q])
+        if output:
+            publisher.publish(output, q)
+
+    # ── Next step ─────────────────────────────────────────────────────────────
+    done_quarters = sorted(args.quarters)
+    last_q = done_quarters[-1]
+    remaining = [q for q in [1, 2, 3, 4] if q > last_q]
+
+    print("\n── Next step ────────────────────────────────────────────────")
+    if remaining:
+        next_q = remaining[0]
+        print(f"  Q{last_q} done. Move on to Q{next_q}:")
+        print(f"  python3 vod_replay.py --dry-run --quarters {next_q}")
+    else:
+        print(f"  All quarters done!")
+        print(f"  Highlights are in: highlights/{config.LEAGUE}/{config.TEAM}/{config.OPPONENT}/")
+    print("─────────────────────────────────────────────────────────────\n")
+
+
+if __name__ == "__main__":
+    main()

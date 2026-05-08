@@ -1,0 +1,18 @@
+# Large media files — never commit these
+recording/
+clips/
+highlights/
+review/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Whisper model cache
+~/.cache/whisper/
