@@ -76,23 +76,10 @@ model, rather than 5–6 to derive it from scratch.
 
 ## FOR CLAUDE — READ THIS FIRST
 
-If you are a Claude instance (on any machine) helping with this project:
-
-1. **Read this entire file before doing anything.** It contains confirmed
-   calibration values, lessons learned, and workflow decisions that are not
-   obvious from the code alone. Acting without reading it will repeat mistakes
-   we already solved.
-
-2. **Read `config.py` next.** It shows the current game's calibration state —
-   anchors already confirmed, settings already tuned.
-
-3. **Update this runbook** whenever something new is learned: a new fix, a
-   new calibration insight, a new lesson from a game. Keep it current so the
-   next session (on any machine) benefits immediately.
-
-4. **Do not change `OPPONENT`, `GAME_ID`, or `CALIBRATION_ANCHORS` without
-   the user confirming** — these are game-specific and must match the actual
-   video being processed.
+Instructions are in `CLAUDE.md` (auto-loaded by Claude Code). Read this
+entire RUNBOOK before doing any work — it contains confirmed calibration
+values, workflow decisions, and lessons learned that are not obvious from
+the code alone.
 
 ---
 
