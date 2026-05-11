@@ -174,15 +174,34 @@ def _parse_video_time(s: str) -> Optional[int]:
 
 
 def _append_anchors_to_config(new_anchors: list) -> None:
-    """Insert new calibration anchors into config.py before the closing ]."""
+    """Persist new calibration anchors to config.py.
+
+    In-memory config.CALIBRATION_ANCHORS is already updated by the calibrate
+    loop before this is called, so we only touch the file here.
+    Existing file entries for the same (quarter, gt) are replaced to prevent
+    duplicates when re-calibrating a play.
+    """
     if not new_anchors:
         return
     with open("config.py", "r") as f:
         content = f.read()
 
-    lines = []
+    # Remove any existing confirmed lines for (quarter, gt) pairs we're updating
+    replace_keys = {(q, g) for _, q, g in new_anchors}
+    filtered_lines = []
+    for line in content.splitlines(keepends=True):
+        drop = False
+        for (q, g) in replace_keys:
+            if f", {q}, \"{g}\")" in line and "# confirmed" in line:
+                drop = True
+                break
+        if not drop:
+            filtered_lines.append(line)
+    content = "".join(filtered_lines)
+
+    new_lines = []
     for video_secs, quarter, gt in new_anchors:
-        lines.append(f"    ({video_secs}, {quarter}, \"{gt}\"),  # confirmed")
+        new_lines.append(f"    ({video_secs}, {quarter}, \"{gt}\"),  # confirmed")
 
     # Find the closing ] of CALIBRATION_ANCHORS
     start = content.find("CALIBRATION_ANCHORS")
@@ -191,13 +210,9 @@ def _append_anchors_to_config(new_anchors: list) -> None:
         log.error("Could not find CALIBRATION_ANCHORS closing bracket in config.py")
         return
 
-    new_content = content[:end] + "\n" + "\n".join(lines) + content[end:]
+    new_content = content[:end] + "\n" + "\n".join(new_lines) + content[end:]
     with open("config.py", "w") as f:
         f.write(new_content)
-
-    # Update in-memory config so subsequent estimates use the new anchors
-    for video_secs, quarter, gt in new_anchors:
-        config.CALIBRATION_ANCHORS.append((video_secs, quarter, gt))
 
     log.info("config.py updated with %d new anchor(s).", len(new_anchors))
 
@@ -407,10 +422,22 @@ def main():
         print("  or type the actual video time (e.g.  7:39  or  1:02:07).")
         print("=" * 62 + "\n")
 
-        new_anchors = []
-        last_video_secs = 0  # track to catch inverted entries
+        new_anchors = []  # (video_secs, period, gt) added this session
 
-        for evt in sikat_events:
+        def _last_confirmed_secs():
+            """Highest video timestamp confirmed so far in this session."""
+            return max((v for v, q, g in new_anchors), default=0)
+
+        def _remove_anchor(period, gt):
+            """Remove an anchor from both new_anchors and in-memory config."""
+            new_anchors[:] = [(v,q,g) for v,q,g in new_anchors
+                              if not (q == period and g == gt)]
+            config.CALIBRATION_ANCHORS[:] = [(v,q,g) for v,q,g in config.CALIBRATION_ANCHORS
+                                             if not (q == period and g == gt)]
+
+        i = 0
+        while i < len(sikat_events):
+            evt     = sikat_events[i]
             period  = evt.get("period")
             gt      = evt.get("gt", "00:00")
             player  = evt.get("player", "Unknown")
@@ -425,22 +452,39 @@ def main():
                     f"  Q{period} {gt}  {player} ({a_type} {sub})"
                     f"  [{score_tag}]"
                     f"  estimated {_fmt(vid_ts)}"
-                    f"  → actual [Enter=correct]: "
+                    f"  → actual [Enter=correct, b=back]: "
                 ).strip()
+
+                if raw.lower() in ("b", "back"):
+                    if i > 0:
+                        prev = sikat_events[i - 1]
+                        _remove_anchor(prev.get("period"), prev.get("gt", "00:00"))
+                        i -= 1
+                        print("  ↩ Going back to previous play.")
+                    else:
+                        print("  Already at the first play.")
+                    break
+
                 if not raw:
-                    last_video_secs = int(vid_ts)
+                    i += 1
                     break  # estimate accepted, no anchor needed
+
                 actual = _parse_video_time(raw)
                 if actual is not None:
-                    if actual <= last_video_secs:
-                        print(f"    WARNING: {_fmt(actual)} is not after the previous play at {_fmt(last_video_secs)}.")
+                    last = _last_confirmed_secs()
+                    if actual <= last:
+                        print(f"    WARNING: {_fmt(actual)} is not after the previous play"
+                              f" at {_fmt(last)}.")
                         print(f"    Video timestamps must increase as the game progresses.")
                         print(f"    Please re-check the video and try again.")
                         continue
+                    # Remove any stale anchor for this exact play before adding the new one
+                    _remove_anchor(period, gt)
                     new_anchors.append((actual, period, gt))
                     config.CALIBRATION_ANCHORS.append((actual, period, gt))
-                    last_video_secs = actual
+                    i += 1
                     break
+
                 print("    Invalid format. Use M:SS, MM:SS, or H:MM:SS (e.g. 1:07:39).")
 
         if new_anchors:

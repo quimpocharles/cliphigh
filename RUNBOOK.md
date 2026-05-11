@@ -441,6 +441,20 @@ ffmpeg -i recording/stream.f399.mp4 -i recording/stream.f140.m4a \
   and Felicilda (Q2 01:15) were 9 game-clock seconds apart with 9 real seconds
   between them in the video. No stoppages = no inflation. This is correct.
 
+---
+
+## Games Processed
+
+| # | League | Team | Opponent | Game ID | Quarters |
+|---|---|---|---|---|---|
+| 1 | MPBL | Zamboanga Sikat | Iloilo | 2835583 | Q1 Q2 Q3 Q4 |
+| 2 | MPBL | Zamboanga Sikat | Ilagan | 2836518 | Q1 Q2 Q3 Q4 |
+| 3 | MPBL | Zamboanga Sikat | San Juan | 2836529 | Q1 Q2 Q4 |
+
+**Total: 3 MPBL games**
+
+---
+
 ## Lessons Learned (Ilagan game — ID 2836518)
 
 - **New calibrate flow worked:** Q1 was perfect on the first attempt — the dry-run → calibrate → generate flow prevented the bad-output-then-fix cycle that Iloilo Q1 required.
@@ -470,6 +484,18 @@ ffmpeg -i recording/stream.f399.mp4 -i recording/stream.f140.m4a \
   anchors (exact clock moment) but are excluded from the highlight reel with
   `INCLUDE_FREETHROWS = False`.
 
+## Lessons Learned (San Juan game — ID 2836529)
+
+- **Bad anchor slipped through the monotonic check:** Q4 entries `8306` and `8307` were only 1 second apart in video time but mapped to game clocks 54 seconds apart. The check only compared against anchors added *this session*, so a pre-existing bad entry from a previous calibration run was not caught. Fix applied: calibrate loop now removes any stale anchor for the same (quarter, gt) before adding the new one; `_append_anchors_to_config` strips old matching file entries instead of blindly appending.
+
+- **"Updated estimates" display showed wrong values after calibration:** When re-calibrating a play that already had an anchor, the old anchor was not removed first. Both old and new values ended up in the in-memory anchor table; sort order determined which was used for interpolation, producing stale results in the summary display. Same fix as above resolves this.
+
+- **Double-append bug in `_append_anchors_to_config`:** The function was appending new anchors to `config.CALIBRATION_ANCHORS` in memory even though the calibrate loop had already done so. Fixed by removing the redundant in-memory update from `_append_anchors_to_config`.
+
+- **Q3 was skipped intentionally** — only Q1, Q2, and Q4 were generated for this game.
+
+- **Next improvement to consider:** add a real-time-factor sanity check at calibration input time. If the entered timestamp implies an RTF outside a plausible range (e.g. <0.8 or >6.0 vs. the previous anchor), warn before accepting. Would have surfaced the bad `8306` entry immediately.
+
 ---
 
 ## Config Quick-Reference for a New Game
@@ -484,17 +510,15 @@ CALIBRATION_ANCHORS = [
     # (video_seconds, quarter, "MM:SS"),
 ]
 
-AUDIO_REJECT_KEYWORDS = [
-    "opponent_city", "opponent_nickname",
-]
-
-# These can stay at Iloilo-game defaults as a starting point:
+# These can stay at defaults as a starting point — re-confirm each game:
 # REAL_TIME_FACTOR = 2.2
 # QUARTER_BREAK_SECONDS = 190
 # HALFTIME_BREAK_SECONDS = 700
-# CLIP_LEAD_SECONDS = 12
-# CLIP_TAIL_SECONDS = 8
+# CLIP_LEAD_SECONDS = 3
+# CLIP_TAIL_SECONDS = 4
 # INCLUDE_FREETHROWS = False
 # AUDIO_VERIFY = True
-# WHISPER_MODEL = "base"
+# CROWD_NOISE_SILENCE_THRESHOLD = 800
+# CROWD_NOISE_SPIKE_RATIO = 1.2
+# CROWD_NOISE_CONSISTENT_FACTOR = 4
 ```

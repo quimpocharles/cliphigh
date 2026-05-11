@@ -47,6 +47,11 @@ CALIBRATION_ANCHORS = [
     (3205, 2, "06:40"),  # confirmed
     (3613, 2, "04:26"),  # confirmed
     (4146, 2, "00:03"),  # confirmed
+    (6580, 4, "08:01"),  # confirmed
+    (6822, 4, "05:26"),  # confirmed
+    (7046, 4, "03:29"),  # confirmed
+    (7811, 4, "01:12"),  # confirmed
+    (7952, 4, "00:18"),  # confirmed
 ]
 
 # Fallback real-time factor (real seconds per game-clock second).
