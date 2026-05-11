@@ -1,5 +1,6 @@
 # Large media files — never commit these
 recording/
+*.url
 clips/
 highlights/
 review/

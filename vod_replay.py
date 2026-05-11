@@ -208,6 +208,16 @@ def _fmt(video_secs: float) -> str:
 
 # ── VOD download ──────────────────────────────────────────────────────────────
 
+URL_RECORD_FILE = os.path.join(config.RECORDING_DIR, "stream.url")
+
+
+def _saved_url() -> str:
+    """Return the YouTube URL that was used for the current recording, or ''."""
+    if os.path.isfile(URL_RECORD_FILE):
+        return open(URL_RECORD_FILE).read().strip()
+    return ""
+
+
 def download_vod(url: str, output: str) -> bool:
     Path(config.RECORDING_DIR).mkdir(exist_ok=True)
     log.info("Downloading VOD → %s  (this may take a while…)", output)
@@ -215,6 +225,7 @@ def download_vod(url: str, output: str) -> bool:
         "yt-dlp",
         "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "--merge-output-format", "mp4",
+        "--force-overwrites",
         "-o", output,
         url,
     ]
@@ -222,6 +233,9 @@ def download_vod(url: str, output: str) -> bool:
     if result.returncode != 0:
         log.error("yt-dlp download failed (exit %d).", result.returncode)
         return False
+    # Save the URL so future runs can verify they're using the right video
+    with open(URL_RECORD_FILE, "w") as f:
+        f.write(url)
     log.info("Download complete: %s", output)
     return True
 
@@ -307,9 +321,20 @@ def main():
     log.info("═" * 60)
 
     # ── Download VOD ──────────────────────────────────────────────────────────
-    if not args.dry_run:
+    if not args.dry_run and not args.calibrate:
         if args.skip_download and os.path.isfile(VOD_FILE):
-            log.info("Reusing existing file: %s", VOD_FILE)
+            saved = _saved_url()
+            if saved and saved != config.YOUTUBE_STREAM_URL:
+                log.warning("═" * 60)
+                log.warning("  WRONG VIDEO DETECTED")
+                log.warning("  Recording on disk : %s", saved)
+                log.warning("  Current game URL  : %s", config.YOUTUBE_STREAM_URL)
+                log.warning("  Re-downloading the correct video…")
+                log.warning("═" * 60)
+                if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
+                    sys.exit(1)
+            else:
+                log.info("Reusing existing file: %s", VOD_FILE)
         else:
             if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
                 sys.exit(1)
