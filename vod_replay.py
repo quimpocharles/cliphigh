@@ -37,6 +37,7 @@ from typing import List, Optional
 import requests
 
 import config
+import game_stats
 from fiba_poller import ScoringEvent, QuarterEndEvent, _fetch_data, _scores, _points_for
 from clipper import Clipper
 from stream_recorder import StreamRecorder
@@ -51,6 +52,16 @@ logging.basicConfig(
 log = logging.getLogger("vod_replay")
 
 VOD_FILE = os.path.join(config.RECORDING_DIR, "stream.mp4")
+
+# RTF profile loaded once per run from game_stats/*.json
+_rtf_profile: Optional[dict] = None
+
+
+def _get_rtf_profile() -> dict:
+    global _rtf_profile
+    if _rtf_profile is None:
+        _rtf_profile = game_stats.load_profile(config.LEAGUE)
+    return _rtf_profile
 
 
 # ── Anchor table ─────────────────────────────────────────────────────────────
@@ -96,14 +107,55 @@ def _build_anchor_table() -> list:
     return table
 
 
+def _extrapolate(v_last: float, a_last: int, target_abs: int,
+                 period_len: int) -> float:
+    """
+    Extrapolate video seconds from a_last → target_abs using a
+    position-aware RTF profile learned from previous games.
+
+    Steps through the game clock in bucket-sized increments, applying the
+    average RTF observed for that (quarter, clock-bucket) combination.
+    Falls back to config.REAL_TIME_FACTOR for any bucket with no history.
+    Quarter and halftime breaks are added when a quarter boundary is crossed.
+    """
+    profile = _get_rtf_profile()
+    extra = 0.0
+    a = a_last
+
+    while a < target_abs:
+        q = a // period_len + 1
+        q_end_abs     = q * period_len
+        clock_remaining = q_end_abs - a
+
+        # Advance only to the nearest bucket boundary, quarter end, or target
+        next_stop = min(target_abs, q_end_abs)
+        for _, lo, _ in game_stats.BUCKETS:
+            boundary = q_end_abs - lo          # absolute secs where bucket starts
+            if a < boundary < next_stop:
+                next_stop = boundary
+
+        step = next_stop - a
+        bucket = game_stats.clock_bucket(clock_remaining)
+        rtf = profile.get((q, bucket), config.REAL_TIME_FACTOR)
+        extra += step * rtf
+        a = next_stop
+
+        # If we just finished a quarter and haven't reached target yet, add break
+        if a == q_end_abs and a < target_abs:
+            extra += (config.HALFTIME_BREAK_SECONDS if q == 2
+                      else config.QUARTER_BREAK_SECONDS)
+
+    return v_last + extra
+
+
 def event_video_timestamp(period: int, gt: str) -> float:
     """
     Convert a pbp entry's (period, gt) to a video timestamp (seconds).
 
     Uses piecewise linear interpolation between calibration anchors.
-    Beyond the last anchor, extrapolates with config.REAL_TIME_FACTOR.
-    Breaks between quarters are handled by adding the appropriate break
-    duration once per quarter boundary crossed.
+    Beyond the last anchor, extrapolates using a position-aware RTF profile
+    built from confirmed anchor data across previous games (game_stats/).
+    Falls back to config.REAL_TIME_FACTOR when no historical data exists.
     """
     period_len = config.PERIOD_LENGTH * 60
     gt_remaining = _parse_gt(gt)
@@ -111,44 +163,19 @@ def event_video_timestamp(period: int, gt: str) -> float:
     # Absolute game seconds (pure game-clock progress, no breaks)
     target_abs = (period - 1) * period_len + elapsed_in_q
 
-    # Accumulated break time before this quarter
-    def breaks_before(q: int) -> float:
-        total = 0.0
-        for i in range(1, q):
-            total += (config.HALFTIME_BREAK_SECONDS
-                      if i == 2 else config.QUARTER_BREAK_SECONDS)
-        return total
-
     table = _build_anchor_table()
 
-    # Find the two anchors that bracket target_abs
+    # Find the two anchors that bracket target_abs → interpolate
     for i in range(len(table) - 1):
         v0, a0 = table[i]
         v1, a1 = table[i + 1]
         if a0 <= target_abs <= a1:
-            # Interpolate linearly between these two anchors
             frac = (target_abs - a0) / (a1 - a0)
             return v0 + frac * (v1 - v0)
 
-    # Extrapolate beyond last anchor with REAL_TIME_FACTOR + break offsets
+    # Beyond last anchor → position-aware extrapolation
     v_last, a_last = table[-1]
-    # Which quarter did the last anchor fall in?
-    last_q = a_last // period_len + 1
-    target_q = period
-
-    extra_video = 0.0
-    for q in range(last_q, target_q):
-        remaining_in_q = period_len - (a_last - (q - 1) * period_len) if q == last_q else period_len
-        extra_video += remaining_in_q * config.REAL_TIME_FACTOR
-        extra_video += (config.HALFTIME_BREAK_SECONDS if q == 2 else config.QUARTER_BREAK_SECONDS)
-
-    game_secs_in_target_q = elapsed_in_q if period == target_q else elapsed_in_q
-    if target_q > last_q:
-        extra_video += elapsed_in_q * config.REAL_TIME_FACTOR
-    else:
-        extra_video += (target_abs - a_last) * config.REAL_TIME_FACTOR
-
-    return v_last + extra_video
+    return _extrapolate(v_last, a_last, target_abs, period_len)
 
 
 # ── Anchor lookup ────────────────────────────────────────────────────────────
@@ -340,6 +367,12 @@ def main():
              config.TIPOFF_VIDEO_SECONDS // 60,
              config.TIPOFF_VIDEO_SECONDS % 60)
     log.info("  Quarters: %s", args.quarters)
+    profile = _get_rtf_profile()
+    if profile:
+        log.info("  RTF profile loaded (%d bucket(s) from game_stats/)", len(profile))
+    else:
+        log.info("  RTF profile: none yet — using REAL_TIME_FACTOR=%.1f fallback",
+                 config.REAL_TIME_FACTOR)
     log.info("═" * 60)
 
     # ── Download VOD ──────────────────────────────────────────────────────────
@@ -490,6 +523,14 @@ def main():
         if new_anchors:
             _append_anchors_to_config(new_anchors)
             print(f"\n  {len(new_anchors)} anchor(s) saved to config.py.")
+
+            # Persist game stats and reload the RTF profile so the
+            # "Updated estimates" display below uses the freshest data
+            stats_path = game_stats.save(config)
+            log.info("Game stats saved → %s", stats_path)
+            global _rtf_profile
+            _rtf_profile = None   # force reload with new anchors included
+
             print("\n  Updated estimates:")
             for evt in sikat_events:
                 period = evt.get("period")

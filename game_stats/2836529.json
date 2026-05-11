@@ -1,0 +1,100 @@
+{
+  "game_id": "2836529",
+  "league": "mpbl",
+  "team": "zam_sj",
+  "opponent": "sj",
+  "date": "2025-05-11",
+  "period_length": 10,
+  "anchor_count": 14,
+  "segments": [
+    {
+      "quarter": 1,
+      "clock_from": "10:00",
+      "clock_to": "09:15",
+      "rtf": 1.044,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "09:15",
+      "clock_to": "07:42",
+      "rtf": 2.258,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "07:42",
+      "clock_to": "06:58",
+      "rtf": 0.977,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:58",
+      "clock_to": "04:16",
+      "rtf": 2.241,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "04:16",
+      "clock_to": "03:18",
+      "rtf": 2.586,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "03:18",
+      "clock_to": "02:36",
+      "rtf": 0.952,
+      "bucket": "late"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "06:40",
+      "clock_to": "04:26",
+      "rtf": 3.045,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "04:26",
+      "clock_to": "00:03",
+      "rtf": 2.027,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "08:01",
+      "clock_to": "05:26",
+      "rtf": 1.561,
+      "bucket": "early"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "05:26",
+      "clock_to": "03:29",
+      "rtf": 1.915,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "03:29",
+      "clock_to": "01:12",
+      "rtf": 5.584,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "01:12",
+      "clock_to": "00:18",
+      "rtf": 2.611,
+      "bucket": "late"
+    }
+  ],
+  "breaks": {
+    "q1_q2": 244,
+    "halftime": null,
+    "q3_q4": null
+  }
+}

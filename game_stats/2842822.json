@@ -1,0 +1,212 @@
+{
+  "game_id": "2842822",
+  "league": "jr_mpbl",
+  "team": "jt",
+  "opponent": "sj",
+  "date": "2026-05-11",
+  "period_length": 10,
+  "anchor_count": 32,
+  "segments": [
+    {
+      "quarter": 1,
+      "clock_from": "10:00",
+      "clock_to": "09:13",
+      "rtf": 1.702,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "09:13",
+      "clock_to": "06:31",
+      "rtf": 1.222,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:31",
+      "clock_to": "06:08",
+      "rtf": 0.957,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:08",
+      "clock_to": "04:44",
+      "rtf": 1.833,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "04:44",
+      "clock_to": "01:22",
+      "rtf": 1.421,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "01:22",
+      "clock_to": "00:12",
+      "rtf": 2.543,
+      "bucket": "late"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "08:23",
+      "clock_to": "07:14",
+      "rtf": 1.087,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "07:14",
+      "clock_to": "06:40",
+      "rtf": 0.941,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "06:40",
+      "clock_to": "01:13",
+      "rtf": 1.465,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "01:13",
+      "clock_to": "00:08",
+      "rtf": 1.631,
+      "bucket": "late"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "08:43",
+      "clock_to": "07:12",
+      "rtf": 1.011,
+      "bucket": "early"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "07:12",
+      "clock_to": "06:48",
+      "rtf": 1.083,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "06:48",
+      "clock_to": "06:21",
+      "rtf": 1.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "06:21",
+      "clock_to": "05:53",
+      "rtf": 1.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "05:53",
+      "clock_to": "04:27",
+      "rtf": 1.721,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "04:27",
+      "clock_to": "04:03",
+      "rtf": 2.208,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "04:03",
+      "clock_to": "03:14",
+      "rtf": 1.143,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "03:14",
+      "clock_to": "00:51",
+      "rtf": 1.434,
+      "bucket": "late"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "00:51",
+      "clock_to": "00:30",
+      "rtf": 1.048,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "00:30",
+      "clock_to": "00:06",
+      "rtf": 0.958,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "07:50",
+      "clock_to": "07:34",
+      "rtf": 4.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "07:34",
+      "clock_to": "06:15",
+      "rtf": 2.203,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "06:15",
+      "clock_to": "05:10",
+      "rtf": 2.554,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "04:40",
+      "clock_to": "03:08",
+      "rtf": 1.891,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "03:08",
+      "clock_to": "02:49",
+      "rtf": 4.684,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "02:49",
+      "clock_to": "02:18",
+      "rtf": 1.0,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "02:18",
+      "clock_to": "01:54",
+      "rtf": 0.958,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "01:54",
+      "clock_to": "00:14",
+      "rtf": 2.45,
+      "bucket": "late"
+    }
+  ],
+  "breaks": {
+    "q1_q2": 57,
+    "halftime": 360,
+    "q3_q4": 58
+  }
+}

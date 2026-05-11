@@ -1,0 +1,184 @@
+{
+  "game_id": "2836518",
+  "league": "mpbl",
+  "team": "zamboanga",
+  "opponent": "ilagan",
+  "date": "2025-05-08",
+  "period_length": 10,
+  "anchor_count": 30,
+  "segments": [
+    {
+      "quarter": 1,
+      "clock_from": "10:00",
+      "clock_to": "09:44",
+      "rtf": 1.062,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "07:22",
+      "clock_to": "06:28",
+      "rtf": 2.019,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:28",
+      "clock_to": "04:45",
+      "rtf": 0.971,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "04:45",
+      "clock_to": "03:39",
+      "rtf": 1.273,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "03:39",
+      "clock_to": "02:56",
+      "rtf": 1.279,
+      "bucket": "late"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "02:56",
+      "clock_to": "01:11",
+      "rtf": 2.61,
+      "bucket": "late"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "01:11",
+      "clock_to": "00:47",
+      "rtf": 1.167,
+      "bucket": "late"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "00:47",
+      "clock_to": "00:25",
+      "rtf": 3.409,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "09:52",
+      "clock_to": "09:22",
+      "rtf": 0.9,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "09:22",
+      "clock_to": "08:48",
+      "rtf": 1.029,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "08:48",
+      "clock_to": "04:04",
+      "rtf": 2.187,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "04:04",
+      "clock_to": "01:45",
+      "rtf": 1.712,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "09:34",
+      "clock_to": "06:18",
+      "rtf": 1.138,
+      "bucket": "early"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "06:00",
+      "clock_to": "05:09",
+      "rtf": 1.373,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "05:09",
+      "clock_to": "01:20",
+      "rtf": 2.074,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "01:20",
+      "clock_to": "00:51",
+      "rtf": 1.966,
+      "bucket": "late"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "00:51",
+      "clock_to": "00:29",
+      "rtf": 2.0,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "04:27",
+      "clock_to": "02:16",
+      "rtf": 3.137,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "02:16",
+      "clock_to": "01:53",
+      "rtf": 4.0,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "01:53",
+      "clock_to": "00:54",
+      "rtf": 5.797,
+      "bucket": "late"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "00:54",
+      "clock_to": "00:49",
+      "rtf": 20.4,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "00:49",
+      "clock_to": "00:37",
+      "rtf": 11.917,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "00:37",
+      "clock_to": "00:33",
+      "rtf": 2.0,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "00:33",
+      "clock_to": "00:24",
+      "rtf": 9.111,
+      "bucket": "crunch"
+    }
+  ],
+  "breaks": {
+    "q1_q2": 154,
+    "halftime": 1020,
+    "q3_q4": 133
+  }
+}

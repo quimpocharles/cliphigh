@@ -2,75 +2,82 @@
 
 ---
 
-## Planned v2 — Shared Learning System
+## v2 — RTF Learning System (implemented)
 
 ### Goal
-The system learns from every finished game. Over time, calibration requires
-fewer manual anchor points because the model already knows where stoppages
-cluster for each league.
+The system learns how fast the game clock moves in real time (RTF) from every
+confirmed calibration anchor. Over time, initial timestamp projections become
+accurate enough that you need fewer manual anchors per game.
 
 ### How it works
 
-**After each game**, the system automatically extracts derived metrics from
-the confirmed CALIBRATION_ANCHORS and writes them to `game_stats/{game_id}.json`:
+**After each `--calibrate` run**, game stats are written to
+`game_stats/{game_id}.json` automatically:
 
 ```json
 {
-  "game_id": "2836518",
-  "league": "mpbl",
-  "date": "2025-05-08",
-  "quarter_breaks": [185, 710, 192],
+  "game_id": "2836529", "league": "mpbl",
   "segments": [
-    {"quarter": 1, "gt_from": "09:44", "gt_to": "08:53", "rtf": 1.12},
-    {"quarter": 1, "gt_from": "08:53", "gt_to": "07:22", "rtf": 1.31},
+    {"quarter": 1, "clock_from": "10:00", "clock_to": "09:15",
+     "rtf": 1.04, "bucket": "early"},
     ...
-  ]
+  ],
+  "breaks": {"q1_q2": 194, "halftime": null, "q3_q4": null}
 }
 ```
 
-Each segment's RTF (real seconds ÷ game-clock seconds) reveals stoppages:
+RTF (real-time factor) = broadcast seconds elapsed ÷ game-clock seconds elapsed:
 - RTF ~1.0 = pure running clock, no stoppages
-- RTF ~1.5–2.0 = normal play with minor stoppages
-- RTF ~4.0+ = timeout, challenge, or review inside that segment
+- RTF ~2.0 = normal play with regular fouls
+- RTF ~5–10+ = intentional fouling in the final minute
+
+Each quarter is split into four buckets by clock remaining:
+
+| Bucket  | Clock remaining | MPBL avg RTF | Jr. MPBL avg RTF |
+|---------|----------------|--------------|------------------|
+| early   | 8:00 – 10:00   | 1.46         | 1.46             |
+| mid     | 4:00 –  8:00   | 1.97         | 1.30             |
+| late    | 1:00 –  4:00   | 3.24         | 2.40             |
+| crunch  | 0:00 –  1:00   | 7.14         | 1.00             |
+
+(Values above are averages from 2 MPBL games and 1 Jr. MPBL game — will
+improve as more games are added.)
+
+**Key difference vs old flat RTF=2.2:** the system now knows Q4 crunch
+time averages 10.86x real-time for MPBL — the old 2.2 estimate was
+drastically wrong for intentional-foul situations.
+
+**Profile is loaded per league.** Running a game with `LEAGUE = "mpbl"` uses
+MPBL history; `LEAGUE = "jr_mpbl"` uses Jr. MPBL history. Different leagues
+have different natural paces — MPBL has ~190s quarter breaks and 700s+
+halftime; Jr. MPBL has ~57s quarter breaks and 360s halftime.
 
 **Sharing is via git — no server needed:**
-
 ```
 finish game → game_stats/{game_id}.json written → git push
-                                                        ↓
-other users git pull → receive all contributed game stats
-                                                        ↓
-new_game.py reads game_stats/*.json → computes league averages
-         → suggests smarter defaults for REAL_TIME_FACTOR,
-           QUARTER_BREAK_SECONDS, HALFTIME_BREAK_SECONDS
+other users git pull → richer profile → better projections
 ```
-
-Each game is its own file so there are never merge conflicts. The more
-users contribute, the richer the dataset becomes — passively, through
-normal git workflow.
-
-**What the model learns per league over time:**
-
-```
-Q1 early (10:00→07:00)  avg RTF: 1.3   (few stoppages, running clock)
-Q1 mid   (07:00→04:00)  avg RTF: 1.8
-Q1 late  (04:00→00:00)  avg RTF: 2.4   (more fouls, timeouts pile up)
-Q4 late  (02:00→00:00)  avg RTF: 3.5+  (intentional fouls, reviews)
-```
+Each game is its own file so there are never merge conflicts.
 
 **End state:** new games need only 1–2 anchors per quarter to confirm the
 model, rather than 5–6 to derive it from scratch.
 
-### Files to build
-- `game_stats/` — folder committed to repo, one JSON per game
-- `analyze.py` — reads game_stats/*.json, computes per-league averages
-- Updated `new_game.py` — pulls latest averages and pre-fills defaults
-- Updated `vod_replay.py --calibrate` — writes game_stats file on completion
+### Files
+- `game_stats/` — one JSON per game, committed to repo
+- `game_stats.py` — extract_segments, save, load_profile, profile_summary
+- `vod_replay.py` — loads profile at startup, calls game_stats.save() after --calibrate
 
-### Design decisions to confirm before building
-- Should game_stats be on `main` or a dedicated `data` branch?
-- Minimum number of anchors required before a game's stats are trusted?
-- How to handle outlier games (broadcast delays, technical issues)?
+### Adding a game manually (backfill)
+If a game was played before `--calibrate` auto-saved stats, run:
+```python
+import game_stats, json
+result = game_stats.extract_segments(anchors, tipoff_secs, period_len=600)
+stats = {"game_id": "...", "league": "...", "team": "...", "opponent": "...",
+         "date": "...", "period_length": 10, "anchor_count": len(anchors),
+         "segments": result["segments"], "breaks": result["breaks"]}
+with open(f"game_stats/{game_id}.json", "w") as f:
+    json.dump(stats, f, indent=2)
+```
 
 ---
 
@@ -489,7 +496,7 @@ ffmpeg -i recording/stream.f399.mp4 -i recording/stream.f140.m4a \
 
 - **First Jr. MPBL game processed successfully.** All 4 quarters completed with 32 confirmed anchors — the densest calibration yet.
 
-- **Jr. MPBL venues have announcer-only audio** — minimal crowd noise compared to MPBL. The crowd noise verifier would be unreliable if used. In practice it did not matter: with all scoring plays anchored, verification was skipped entirely. For future Jr. MPBL games, anchor all plays to avoid the verifier, or set `AUDIO_VERIFY = False`.
+- **Jr. MPBL venues have announcer-only audio** — minimal crowd noise compared to MPBL. The crowd noise verifier is unreliable for these games. Whisper keyword detection was considered ("Yes sir" appears consistently after 3-pointers) but rejected: it only works on 3-pointers, adds heavy dependencies, and is unnecessary because the anchor mechanism already bypasses verification. **Rule: always anchor every scoring play for Jr. MPBL games.** This skips audio verification entirely and produces clean output without extra tooling.
 
 - **Break durations differ from MPBL defaults.** From anchor data:
   - Quarter break (after Q1, Q3): appears shorter than the 190s MPBL default
