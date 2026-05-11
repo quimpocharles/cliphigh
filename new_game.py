@@ -281,8 +281,8 @@ WHISPER_MODEL = "base"   # tiny / base / small — tradeoff speed vs accuracy
 REVIEW_DIR = "review"
 
 AUDIO_CONFIRM_KEYWORDS = [
-    # Team / city
-    "{team_slug}",
+    # Team / city — spoken words from the team name
+    {", ".join(f'"{w.lower()}"' for w in team_name.split() if len(w) > 2)},
     # Player surnames — update with FIBA familyName values for this roster
     "are", "felicilda", "turco", "lazaro", "luciano",
     "calisay", "bunag", "gabat", "rojas", "fornilos", "salim",
@@ -319,13 +319,10 @@ FB_POST_MESSAGE_TEMPLATE = (
 
     # ── Optional cleanup ──────────────────────────────────────────────────────
     print()
-    if os.path.isfile("recording/stream.mp4"):
-        if confirm("  Delete old recording/stream.mp4? (recommended — avoids using wrong video)"):
-            os.remove("recording/stream.mp4")
-            print("  recording/stream.mp4 deleted.")
-        else:
-            print("  WARNING: old recording kept. Make sure to use --skip-download only")
-            print("  after downloading the correct video for this game.")
+    for old_file in ("recording/stream.mp4", "recording/stream.url"):
+        if os.path.isfile(old_file):
+            os.remove(old_file)
+            print(f"  {old_file} deleted.")
 
     # Check if this specific game's output folder already exists (re-run scenario)
     game_clips_dir = os.path.join("clips", league_slug, team_slug, opponent_slug)
