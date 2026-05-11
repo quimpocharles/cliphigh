@@ -276,26 +276,12 @@ QUARTER_COMPILE_DELAY = 90    # seconds to wait before compiling (live mode)
 # -- Audio verification (Whisper) ---------------------------------------------
 AUDIO_VERIFY = True
 
-WHISPER_MODEL = "base"   # tiny / base / small — tradeoff speed vs accuracy
-
 REVIEW_DIR = "review"
 
-AUDIO_CONFIRM_KEYWORDS = [
-    # Team / city — spoken words from the team name
-    {", ".join(f'"{w.lower()}"' for w in team_name.split() if len(w) > 2)},
-    # Player surnames — update with FIBA familyName values for this roster
-    "are", "felicilda", "turco", "lazaro", "luciano",
-    "calisay", "bunag", "gabat", "rojas", "fornilos", "salim",
-    # English basketball calls
-    "scores", "basket", "made", "two", "three", "triple",
-    "free throw", "and one",
-    # Filipino / Tagalog calls common in MPBL broadcasts
-    "puntos", "dos puntos", "tres puntos",
-    "nag-score", "nagsc", "nagscore",
-    "isang", "dalawa", "tatlo",
-]
-
-AUDIO_REJECT_KEYWORDS = {repr(reject_list)}
+# Crowd noise thresholds (16-bit PCM scale: 0-32767)
+CROWD_NOISE_SILENCE_THRESHOLD  = 800
+CROWD_NOISE_SPIKE_RATIO        = 1.2
+CROWD_NOISE_CONSISTENT_FACTOR  = 4
 
 # -- Paths --------------------------------------------------------------------
 RECORDING_DIR  = "recording"

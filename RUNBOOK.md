@@ -394,12 +394,22 @@ minutes), download it separately, calibrate its own tip-off and anchors, and
 cut clips from it manually or treat it as a second pass. Note: plays that
 fall in the gap between the two videos have no footage and cannot be recovered.
 
-### Audio verification rejects legitimate SiKAT clips
+### Audio verification sends clips to `review/`
 
-Inspect `review/` manually. If real baskets are being rejected, add the
-commentator's phrasing to `AUDIO_CONFIRM_KEYWORDS` in config.
+Verification uses **crowd noise energy detection** (replaced Whisper).
+It measures RMS audio energy before and after the basket moment and
+looks for a crowd noise spike in the tail window.
 
-To disable verification entirely: `AUDIO_VERIFY = False`
+Tuning knobs in config.py:
+- `CROWD_NOISE_SILENCE_THRESHOLD` — clips below this RMS are flagged silent (default 800)
+- `CROWD_NOISE_SPIKE_RATIO` — tail must be this much louder than lead (default 1.2)
+- `CROWD_NOISE_CONSISTENT_FACTOR` — if overall RMS > threshold × factor, pass regardless (default 4)
+
+If too many real baskets are rejected: lower `CROWD_NOISE_SPIKE_RATIO` or
+`CROWD_NOISE_CONSISTENT_FACTOR`. If bad clips are passing: raise them.
+
+Note: **anchored plays skip verification entirely.** Only interpolated plays
+are checked. To disable entirely: `AUDIO_VERIFY = False`
 
 ### yt-dlp downloads separate video and audio files (no ffmpeg at download time)
 
