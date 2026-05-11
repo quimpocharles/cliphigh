@@ -223,9 +223,16 @@ Fields it asks for:
 - Opponent name and short folder name
 - Audio reject keywords (opponent city/nickname)
 - YouTube URL
-- Tip-off video time (can be skipped and filled in later)
+- Tip-off video time
+- **Q2, Q3, Q4 start times** (recommended — see below)
 - Clip lead/tail seconds
 - Whether to include free throws in highlights
+
+**Quarter start timestamps are the key to skipping manual calibration.**
+Pause the video at the first second of each quarter (when the game clock
+reads 10:00) and note the video timestamp. With all four quarter starts
+provided, the RTF learning profile handles intra-quarter timing and you can
+run `--quarters 1 2 3 4` directly without `--calibrate`.
 
 ### 2. Update config.py for anything new_game.py does not cover
 
@@ -252,28 +259,33 @@ python3 vod_replay.py --quarters 1
 This downloads to `recording/stream.mp4` automatically. For all subsequent
 quarters always use `--skip-download` to reuse the same file.
 
-### 3. Follow the 3-step flow for each quarter
+### 3. Generate highlights
 
-**Step 1 — Dry-run:** see estimated timestamps
+**If all 4 quarter starts were provided to new_game.py:**
 ```
-python3 vod_replay.py --dry-run --quarters 1
+python3 vod_replay.py --quarters 1 2 3 4
 ```
+The RTF learning profile handles intra-quarter timing. No calibration step needed.
+Review the output — if any clips are off, calibrate only that quarter (step below).
 
-**Step 2 — Calibrate:** verify each play interactively, anchors auto-saved
-```
-python3 vod_replay.py --calibrate --quarters 1
-```
-For each play, press Enter if the estimate is correct, or type the actual
-video time (e.g. `7:39` or `1:02:07`). Corrections are written to config.py
-automatically. Re-run `--calibrate` as many times as needed until all plays
-look right.
+**If quarter starts are missing or clips look wrong:**
 
-**Step 3 — Generate:** cut clips and compile the highlight reel
+Step 1 — Dry-run to check estimates:
 ```
-python3 vod_replay.py --quarters 1 --skip-download
+python3 vod_replay.py --dry-run --quarters N
 ```
 
-The script prints the next command to run at the end of each step.
+Step 2 — Calibrate interactively (anchors auto-saved):
+```
+python3 vod_replay.py --calibrate --quarters N
+```
+Press Enter if the estimate is correct, or type the actual video time
+(e.g. `7:39` or `1:02:07`). Use `b` to go back and fix a wrong entry.
+
+Step 3 — Generate with corrected anchors:
+```
+python3 vod_replay.py --quarters N --skip-download
+```
 
 For Q4 when the stream ended early, add `--min-clock MM:SS` to step 3:
 ```
