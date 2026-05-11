@@ -74,6 +74,55 @@ model, rather than 5–6 to derive it from scratch.
 
 ---
 
+## Planned v3 — Public / Multi-Team Architecture
+
+### Current limitations at scale
+
+The current git-based approach is not sustainable for public use:
+- Everyone clones the same repo including `config.py` with team-specific data
+- Multiple teams' config changes conflict on git
+- `AUDIO_CONFIRM_KEYWORDS` is hardcoded per team — every user has to update manually
+- Sharing game stats back requires write access to the same repo
+- No separation between the tool and each team's data
+
+### Target architecture
+
+```
+cliphigh/            ← public repo (the tool only, no team data)
+  vod_replay.py
+  new_game.py
+  ...
+
+my-team-data/        ← private, per team (their own repo or local folder)
+  config.py
+  game_stats/
+  highlights/
+```
+
+The tool reads config from wherever the user points it. Game stats are
+contributed to a separate shared data repo via pull request — no write
+access to the main tool repo needed.
+
+### Business model options
+
+| Model | Effort | Learning |
+|---|---|---|
+| Free open source | Low | Fragmented — forks don't share back |
+| Licensed tool + shared data pool | Medium | Teams contribute anonymously to pool |
+| Hosted SaaS | High | Centralised — automatic, richest data |
+
+The SaaS model is most sustainable for the learning system (v2) but is a
+significantly larger build. The licensed tool + shared data pool is a
+reasonable middle ground.
+
+### Recommendation
+
+Validate with a few more teams using the current approach before
+committing to a public architecture. Once there is confirmed demand,
+revisit this section and choose a model.
+
+---
+
 ## FOR CLAUDE — READ THIS FIRST
 
 Instructions are in `CLAUDE.md` (auto-loaded by Claude Code). Read this
