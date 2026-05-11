@@ -450,8 +450,9 @@ ffmpeg -i recording/stream.f399.mp4 -i recording/stream.f140.m4a \
 | 1 | MPBL | Zamboanga Sikat | Iloilo | 2835583 | Q1 Q2 Q3 Q4 |
 | 2 | MPBL | Zamboanga Sikat | Ilagan | 2836518 | Q1 Q2 Q3 Q4 |
 | 3 | MPBL | Zamboanga Sikat | San Juan | 2836529 | Q1 Q2 Q4 |
+| 4 | Jr. MPBL | JT Bulacan Taipan 18u | San Juan | 2842822 | Q1 Q2 Q3 Q4 |
 
-**Total: 3 MPBL games**
+**Total: 3 MPBL games, 1 Jr. MPBL game**
 
 ---
 
@@ -483,6 +484,21 @@ ffmpeg -i recording/stream.f399.mp4 -i recording/stream.f140.m4a \
 - **Free throw plays serve dual purpose:** they are precise dead-ball calibration
   anchors (exact clock moment) but are excluded from the highlight reel with
   `INCLUDE_FREETHROWS = False`.
+
+## Lessons Learned (Jr. MPBL — JT Bulacan Taipan 18u vs San Juan, ID 2842822)
+
+- **First Jr. MPBL game processed successfully.** All 4 quarters completed with 32 confirmed anchors — the densest calibration yet.
+
+- **Jr. MPBL venues have announcer-only audio** — minimal crowd noise compared to MPBL. The crowd noise verifier would be unreliable if used. In practice it did not matter: with all scoring plays anchored, verification was skipped entirely. For future Jr. MPBL games, anchor all plays to avoid the verifier, or set `AUDIO_VERIFY = False`.
+
+- **Break durations differ from MPBL defaults.** From anchor data:
+  - Quarter break (after Q1, Q3): appears shorter than the 190s MPBL default
+  - Halftime break: ~524s vs the 700s MPBL default — significantly shorter
+  Dense anchoring made this a non-issue this game, but extrapolation-based estimates would drift badly with wrong break defaults. Re-confirm from anchor data if relying on extrapolation for any Jr. MPBL game.
+
+- **Facebook post hashtag template not updated** — `new_game.py` still writes `#MPBL #PusoPangBayan` for Jr. MPBL games. Update manually in config.py after running `new_game.py` for Jr. MPBL games.
+
+---
 
 ## Lessons Learned (San Juan game — ID 2836529)
 
