@@ -1,0 +1,107 @@
+{
+  "game_id": "2842821",
+  "league": "jr_mpbl",
+  "team": "jt",
+  "opponent": "sj",
+  "date": "2026-05-11",
+  "period_length": 10,
+  "anchor_count": 15,
+  "segments": [
+    {
+      "quarter": 1,
+      "clock_from": "09:55",
+      "clock_to": "08:26",
+      "rtf": 1.011,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "08:26",
+      "clock_to": "07:47",
+      "rtf": 0.923,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "07:47",
+      "clock_to": "06:57",
+      "rtf": 1.16,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:57",
+      "clock_to": "05:58",
+      "rtf": 1.186,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "05:58",
+      "clock_to": "05:35",
+      "rtf": 1.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "05:35",
+      "clock_to": "01:36",
+      "rtf": 1.339,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "10:00",
+      "clock_to": "09:14",
+      "rtf": 0.978,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "09:14",
+      "clock_to": "08:15",
+      "rtf": 1.814,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "08:15",
+      "clock_to": "06:36",
+      "rtf": 1.364,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "06:36",
+      "clock_to": "06:01",
+      "rtf": 1.971,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "06:01",
+      "clock_to": "05:05",
+      "rtf": 0.929,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "05:05",
+      "clock_to": "04:52",
+      "rtf": 3.308,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "04:52",
+      "clock_to": "02:34",
+      "rtf": 1.638,
+      "bucket": "mid"
+    }
+  ],
+  "breaks": {
+    "q1_q2": 227,
+    "halftime": null,
+    "q3_q4": null
+  }
+}

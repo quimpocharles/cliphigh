@@ -12,17 +12,20 @@ config.py. Each anchor is a confirmed (video_seconds, quarter, game_clock)
 triple. Between two known anchors the local real-time factor is derived
 exactly. Beyond the last anchor REAL_TIME_FACTOR is used to extrapolate.
 
-Recommended workflow per quarter
----------------------------------
-    1. python3 vod_replay.py --dry-run --quarters N
-       See estimated timestamps for all plays.
+Workflow per quarter
+--------------------
+Default (recommended):
+    python3 vod_replay.py --quarters N [--skip-download]
 
-    2. python3 vod_replay.py --calibrate --quarters N
-       Verify each play interactively. Provide the actual video time for any
-       that look wrong. Anchors are written to config.py automatically.
+    This always runs dry-run → calibrate → generate in a single session.
+    You will be prompted for the quarter start timestamp if not yet set,
+    shown all estimated timestamps, asked to correct any that are wrong,
+    then clips are cut and compiled automatically.
 
-    3. python3 vod_replay.py --quarters N --skip-download
-       Cut clips and compile the highlight reel.
+Flags:
+    --dry-run         Show estimated timestamps only, then exit.
+    --calibrate       Show timestamps + calibrate, then exit (no clip generation).
+    --skip-download   Reuse the existing VOD file instead of downloading again.
 """
 
 import argparse
@@ -183,6 +186,48 @@ def event_video_timestamp(period: int, gt: str) -> float:
 def _is_anchored(period: int, gt: str) -> bool:
     """Return True if this exact (quarter, game_clock) was manually confirmed."""
     return any(q == period and g == gt for _, q, g in config.CALIBRATION_ANCHORS)
+
+
+# ── Quarter start prompts ─────────────────────────────────────────────────────
+
+def _has_quarter_start_anchor(quarter: int) -> bool:
+    """Return True if CALIBRATION_ANCHORS already has a start-of-quarter anchor."""
+    clock = f"{config.PERIOD_LENGTH}:00"
+    return any(q == quarter and g == clock for _, q, g in config.CALIBRATION_ANCHORS)
+
+
+def _ask_quarter_starts(quarters: list) -> None:
+    """
+    For each quarter > 1, prompt for the video timestamp when the game clock
+    shows PERIOD_LENGTH:00 (e.g. 10:00 for MPBL).  Skips quarters that already
+    have a start anchor in CALIBRATION_ANCHORS.  Writes any provided anchors
+    to config.py immediately.
+    """
+    quarter_clock = f"{config.PERIOD_LENGTH}:00"
+    new_anchors = []
+
+    for q in sorted(quarters):
+        if q == 1:
+            continue  # Q1 start == tipoff, already anchored
+        if _has_quarter_start_anchor(q):
+            continue  # already set from a previous run
+
+        print(f"\n  Q{q} start anchor not set.")
+        print(f"  Pause the video when the Q{q} clock shows {quarter_clock}.")
+        raw = input(f"  Q{q} start video time (M:SS or MM:SS, Enter to skip): ").strip()
+        if not raw:
+            print(f"  Skipped — timestamp accuracy for Q{q} will rely on extrapolation.")
+            continue
+        secs = _parse_video_time(raw)
+        if secs is None:
+            print("  Invalid format — skipping. Add it manually to CALIBRATION_ANCHORS.")
+            continue
+        new_anchors.append((secs, q, quarter_clock))
+        config.CALIBRATION_ANCHORS.append((secs, q, quarter_clock))
+        log.info("Q%d start anchor set: %s", q, _fmt(secs))
+
+    if new_anchors:
+        _append_anchors_to_config(new_anchors)
 
 
 # ── Calibration helpers ───────────────────────────────────────────────────────
@@ -375,25 +420,6 @@ def main():
                  config.REAL_TIME_FACTOR)
     log.info("═" * 60)
 
-    # ── Download VOD ──────────────────────────────────────────────────────────
-    if not args.dry_run and not args.calibrate:
-        if args.skip_download and os.path.isfile(VOD_FILE):
-            saved = _saved_url()
-            if saved and saved != config.YOUTUBE_STREAM_URL:
-                log.warning("═" * 60)
-                log.warning("  WRONG VIDEO DETECTED")
-                log.warning("  Recording on disk : %s", saved)
-                log.warning("  Current game URL  : %s", config.YOUTUBE_STREAM_URL)
-                log.warning("  Re-downloading the correct video…")
-                log.warning("═" * 60)
-                if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
-                    sys.exit(1)
-            else:
-                log.info("Reusing existing file: %s", VOD_FILE)
-        else:
-            if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
-                sys.exit(1)
-
     # ── Fetch pbp data ────────────────────────────────────────────────────────
     log.info("Fetching FIBA play-by-play data…")
     data = _fetch_data()
@@ -423,133 +449,152 @@ def main():
              len(sikat_events), args.quarters,
              "included" if config.INCLUDE_FREETHROWS else "excluded")
 
-    # ── Dry-run ───────────────────────────────────────────────────────────────
+    # ── Quarter start anchors (prompt if missing) ─────────────────────────────
+    _ask_quarter_starts(args.quarters)
+
+    # ── Show estimated timestamps (always) ────────────────────────────────────
+    print()
+    for evt in sikat_events:
+        period = evt.get("period")
+        gt     = evt.get("gt", "00:00")
+        player = evt.get("player", "Unknown")
+        shirt  = evt.get("shirtNumber", "")
+        a_type = evt.get("actionType", "2pt")
+        sub    = evt.get("subType", "")
+        qualif = ", ".join(evt.get("qualifier") or [])
+        vid_ts = event_video_timestamp(period, gt)
+        log.info(
+            "Q%d %s  #%s %-20s  %-10s %-18s  [%s]  → video ~%s",
+            period, gt, shirt, player, a_type, sub, qualif, _fmt(vid_ts),
+        )
+
     if args.dry_run:
+        log.info("[dry-run] No files written.")
+        return
+
+    # ── Calibrate (always in default flow) ────────────────────────────────────
+    print("\n" + "=" * 62)
+    print("  CALIBRATION — Q" + "/Q".join(str(q) for q in args.quarters))
+    print("  Open the YouTube video alongside this prompt.")
+    print("  For each play: press Enter if the estimate is correct,")
+    print("  or type the actual video time (e.g.  7:39  or  1:02:07).")
+    print("=" * 62 + "\n")
+
+    new_anchors = []  # (video_secs, period, gt) added this session
+
+    def _last_confirmed_secs():
+        """Highest video timestamp confirmed so far in this session."""
+        return max((v for v, q, g in new_anchors), default=0)
+
+    def _remove_anchor(period, gt):
+        """Remove an anchor from both new_anchors and in-memory config."""
+        new_anchors[:] = [(v,q,g) for v,q,g in new_anchors
+                          if not (q == period and g == gt)]
+        config.CALIBRATION_ANCHORS[:] = [(v,q,g) for v,q,g in config.CALIBRATION_ANCHORS
+                                         if not (q == period and g == gt)]
+
+    i = 0
+    while i < len(sikat_events):
+        evt     = sikat_events[i]
+        period  = evt.get("period")
+        gt      = evt.get("gt", "00:00")
+        player  = evt.get("player", "Unknown")
+        a_type  = evt.get("actionType", "2pt")
+        sub     = evt.get("subType", "")
+        vid_ts  = event_video_timestamp(period, gt)
+        team_s, opp_s = _scores(evt)
+        score_tag = f"{config.TEAM.upper()} {team_s} - {opp_s} OPP"
+
+        while True:
+            raw = input(
+                f"  Q{period} {gt}  {player} ({a_type} {sub})"
+                f"  [{score_tag}]"
+                f"  estimated {_fmt(vid_ts)}"
+                f"  → actual [Enter=correct, b=back]: "
+            ).strip()
+
+            if raw.lower() in ("b", "back"):
+                if i > 0:
+                    prev = sikat_events[i - 1]
+                    _remove_anchor(prev.get("period"), prev.get("gt", "00:00"))
+                    i -= 1
+                    print("  ↩ Going back to previous play.")
+                else:
+                    print("  Already at the first play.")
+                break
+
+            if not raw:
+                i += 1
+                break  # estimate accepted, no anchor needed
+
+            actual = _parse_video_time(raw)
+            if actual is not None:
+                last = _last_confirmed_secs()
+                if actual <= last:
+                    print(f"    WARNING: {_fmt(actual)} is not after the previous play"
+                          f" at {_fmt(last)}.")
+                    print(f"    Video timestamps must increase as the game progresses.")
+                    print(f"    Please re-check the video and try again.")
+                    continue
+                # Remove any stale anchor for this exact play before adding the new one
+                _remove_anchor(period, gt)
+                new_anchors.append((actual, period, gt))
+                config.CALIBRATION_ANCHORS.append((actual, period, gt))
+                i += 1
+                break
+
+            print("    Invalid format. Use M:SS, MM:SS, or H:MM:SS (e.g. 1:07:39).")
+
+    if new_anchors:
+        _append_anchors_to_config(new_anchors)
+        print(f"\n  {len(new_anchors)} anchor(s) saved to config.py.")
+
+        # Persist game stats and reload the RTF profile so the
+        # "Updated estimates" display below uses the freshest data
+        stats_path = game_stats.save(config)
+        log.info("Game stats saved → %s", stats_path)
+        global _rtf_profile
+        _rtf_profile = None   # force reload with new anchors included
+
+        print("\n  Updated estimates:")
         for evt in sikat_events:
             period = evt.get("period")
             gt     = evt.get("gt", "00:00")
             player = evt.get("player", "Unknown")
-            shirt  = evt.get("shirtNumber", "")
             a_type = evt.get("actionType", "2pt")
-            sub    = evt.get("subType", "")
-            qualif = ", ".join(evt.get("qualifier") or [])
             vid_ts = event_video_timestamp(period, gt)
-            log.info(
-                "Q%d %s  #%s %-20s  %-10s %-18s  [%s]  → video ~%s",
-                period, gt, shirt, player, a_type, sub, qualif, _fmt(vid_ts),
-            )
-        log.info("[dry-run] No files written.")
-        print("\n── Next step ────────────────────────────────────────────────")
-        print("  Verify the timestamps above in the YouTube video, then run:")
-        print(f"  python3 vod_replay.py --calibrate --quarters {' '.join(str(q) for q in args.quarters)}")
-        print("  This will let you correct any wrong timestamps before cutting.")
-        print("─────────────────────────────────────────────────────────────\n")
-        return
+            print(f"    Q{period} {gt}  {player} ({a_type})  → {_fmt(vid_ts)}")
+    else:
+        print("\n  No corrections made.")
 
-    # ── Calibrate mode ────────────────────────────────────────────────────────
+    # --calibrate flag: stop here, don't generate clips
     if args.calibrate:
-        print("\n" + "=" * 62)
-        print("  CALIBRATION — Q" + "/Q".join(str(q) for q in args.quarters))
-        print("  Open the YouTube video alongside this prompt.")
-        print("  For each play: press Enter if the estimate is correct,")
-        print("  or type the actual video time (e.g.  7:39  or  1:02:07).")
-        print("=" * 62 + "\n")
-
-        new_anchors = []  # (video_secs, period, gt) added this session
-
-        def _last_confirmed_secs():
-            """Highest video timestamp confirmed so far in this session."""
-            return max((v for v, q, g in new_anchors), default=0)
-
-        def _remove_anchor(period, gt):
-            """Remove an anchor from both new_anchors and in-memory config."""
-            new_anchors[:] = [(v,q,g) for v,q,g in new_anchors
-                              if not (q == period and g == gt)]
-            config.CALIBRATION_ANCHORS[:] = [(v,q,g) for v,q,g in config.CALIBRATION_ANCHORS
-                                             if not (q == period and g == gt)]
-
-        i = 0
-        while i < len(sikat_events):
-            evt     = sikat_events[i]
-            period  = evt.get("period")
-            gt      = evt.get("gt", "00:00")
-            player  = evt.get("player", "Unknown")
-            a_type  = evt.get("actionType", "2pt")
-            sub     = evt.get("subType", "")
-            vid_ts  = event_video_timestamp(period, gt)
-            team_s, opp_s = _scores(evt)
-            score_tag = f"{config.TEAM.upper()} {team_s} - {opp_s} OPP"
-
-            while True:
-                raw = input(
-                    f"  Q{period} {gt}  {player} ({a_type} {sub})"
-                    f"  [{score_tag}]"
-                    f"  estimated {_fmt(vid_ts)}"
-                    f"  → actual [Enter=correct, b=back]: "
-                ).strip()
-
-                if raw.lower() in ("b", "back"):
-                    if i > 0:
-                        prev = sikat_events[i - 1]
-                        _remove_anchor(prev.get("period"), prev.get("gt", "00:00"))
-                        i -= 1
-                        print("  ↩ Going back to previous play.")
-                    else:
-                        print("  Already at the first play.")
-                    break
-
-                if not raw:
-                    i += 1
-                    break  # estimate accepted, no anchor needed
-
-                actual = _parse_video_time(raw)
-                if actual is not None:
-                    last = _last_confirmed_secs()
-                    if actual <= last:
-                        print(f"    WARNING: {_fmt(actual)} is not after the previous play"
-                              f" at {_fmt(last)}.")
-                        print(f"    Video timestamps must increase as the game progresses.")
-                        print(f"    Please re-check the video and try again.")
-                        continue
-                    # Remove any stale anchor for this exact play before adding the new one
-                    _remove_anchor(period, gt)
-                    new_anchors.append((actual, period, gt))
-                    config.CALIBRATION_ANCHORS.append((actual, period, gt))
-                    i += 1
-                    break
-
-                print("    Invalid format. Use M:SS, MM:SS, or H:MM:SS (e.g. 1:07:39).")
-
-        if new_anchors:
-            _append_anchors_to_config(new_anchors)
-            print(f"\n  {len(new_anchors)} anchor(s) saved to config.py.")
-
-            # Persist game stats and reload the RTF profile so the
-            # "Updated estimates" display below uses the freshest data
-            stats_path = game_stats.save(config)
-            log.info("Game stats saved → %s", stats_path)
-            global _rtf_profile
-            _rtf_profile = None   # force reload with new anchors included
-
-            print("\n  Updated estimates:")
-            for evt in sikat_events:
-                period = evt.get("period")
-                gt     = evt.get("gt", "00:00")
-                player = evt.get("player", "Unknown")
-                a_type = evt.get("actionType", "2pt")
-                vid_ts = event_video_timestamp(period, gt)
-                print(f"    Q{period} {gt}  {player} ({a_type})  → {_fmt(vid_ts)}")
-        else:
-            print("\n  No corrections made.")
-
         print("\n── Next step ────────────────────────────────────────────────")
         qs = ' '.join(str(q) for q in args.quarters)
-        print(f"  If all timestamps look good, generate the clips:")
         min_flag = f" --min-clock {args.min_clock}" if args.min_clock else ""
+        print(f"  To generate clips with these anchors:")
         print(f"  python3 vod_replay.py --quarters {qs} --skip-download{min_flag}")
         print("  To calibrate again with more anchors, re-run --calibrate.")
         print("─────────────────────────────────────────────────────────────\n")
         return
+
+    # ── Download VOD ──────────────────────────────────────────────────────────
+    if args.skip_download and os.path.isfile(VOD_FILE):
+        saved = _saved_url()
+        if saved and saved != config.YOUTUBE_STREAM_URL:
+            log.warning("═" * 60)
+            log.warning("  WRONG VIDEO DETECTED")
+            log.warning("  Recording on disk : %s", saved)
+            log.warning("  Current game URL  : %s", config.YOUTUBE_STREAM_URL)
+            log.warning("  Re-downloading the correct video…")
+            log.warning("═" * 60)
+            if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
+                sys.exit(1)
+        else:
+            log.info("Reusing existing file: %s", VOD_FILE)
+    else:
+        if not download_vod(config.YOUTUBE_STREAM_URL, VOD_FILE):
+            sys.exit(1)
 
     # ── Process each scoring play ─────────────────────────────────────────────
     publisher = Publisher()
@@ -616,7 +661,7 @@ def main():
     if remaining:
         next_q = remaining[0]
         print(f"  Q{last_q} done. Move on to Q{next_q}:")
-        print(f"  python3 vod_replay.py --dry-run --quarters {next_q}")
+        print(f"  python3 vod_replay.py --quarters {next_q} --skip-download")
     else:
         print(f"  All quarters done!")
         print(f"  Highlights are in: highlights/{config.LEAGUE}/{config.TEAM}/{config.OPPONENT}/")

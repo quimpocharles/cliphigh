@@ -20,10 +20,16 @@
 
 ## Workflow per quarter (VOD/completed games)
 
+Single command — dry-run + calibrate + generate happen in one session:
 ```
-python3 vod_replay.py --dry-run --quarters N
-python3 vod_replay.py --calibrate --quarters N
-python3 vod_replay.py --quarters N --skip-download
+python3 vod_replay.py --quarters N [--skip-download]
+```
+
+Step-by-step flags (for re-running a specific phase only):
+```
+python3 vod_replay.py --dry-run --quarters N       # show timestamps only
+python3 vod_replay.py --calibrate --quarters N     # calibrate only, no clips
+python3 vod_replay.py --quarters N --skip-download # full flow, reuse VOD
 ```
 
 ## Starting a new game
