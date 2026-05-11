@@ -151,6 +151,13 @@ def event_video_timestamp(period: int, gt: str) -> float:
     return v_last + extra_video
 
 
+# ── Anchor lookup ────────────────────────────────────────────────────────────
+
+def _is_anchored(period: int, gt: str) -> bool:
+    """Return True if this exact (quarter, game_clock) was manually confirmed."""
+    return any(q == period and g == gt for _, q, g in config.CALIBRATION_ANCHORS)
+
+
 # ── Calibration helpers ───────────────────────────────────────────────────────
 
 def _parse_video_time(s: str) -> Optional[int]:
@@ -491,15 +498,23 @@ def main():
             log.warning("Skipping clip for %s at ~%s", player, _fmt(vid_ts))
             continue
 
-        result = audio_verify(clip_path, player_name=player)
-        if result.passed:
-            log.info("  AUDIO PASS  %-20s  %s", player, result.reason)
+        if _is_anchored(period, gt):
+            # Manually calibrated — timestamp is confirmed, skip audio check
+            log.info("  ANCHORED    %-20s  timestamp manually confirmed", player)
             quarter_clips.setdefault(period, []).append(clip_path)
+        elif config.AUDIO_VERIFY:
+            # Interpolated — run audio verification as safety check
+            result = audio_verify(clip_path, player_name=player)
+            if result.passed:
+                log.info("  AUDIO PASS  %-20s  %s", player, result.reason)
+                quarter_clips.setdefault(period, []).append(clip_path)
+            else:
+                log.warning("  AUDIO FAIL  %-20s  %s", player, result.reason)
+                if result.transcript:
+                    log.warning("  Transcript: %s", result.transcript)
+                move_to_review(clip_path)
         else:
-            log.warning("  AUDIO FAIL  %-20s  %s", player, result.reason)
-            if result.transcript:
-                log.warning("  Transcript: %s", result.transcript)
-            move_to_review(clip_path)
+            quarter_clips.setdefault(period, []).append(clip_path)
 
     # ── Compile quarter highlight reels ───────────────────────────────────────
     for q in sorted(quarter_clips):
