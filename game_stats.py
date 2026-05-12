@@ -225,6 +225,44 @@ def load_profile(league: str, stats_dir: str = STATS_DIR) -> dict:
     return {k: round(sum(v) / len(v), 3) for k, v in groups.items()}
 
 
+def load_break_profile(league: str, stats_dir: str = STATS_DIR) -> dict:
+    """
+    Read all game_stats/*.json files for this league and compute the average
+    break duration for each quarter transition.
+
+    Returns {"q1_q2": int|None, "halftime": int|None, "q3_q4": int|None}.
+    A key is None when no games have measured that break yet.
+    """
+    if not os.path.isdir(stats_dir):
+        return {"q1_q2": None, "halftime": None, "q3_q4": None}
+
+    groups: dict = defaultdict(list)
+
+    for fname in sorted(os.listdir(stats_dir)):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(stats_dir, fname)) as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        if data.get("league") != league:
+            continue
+        for key in ("q1_q2", "halftime", "q3_q4"):
+            val = data.get("breaks", {}).get(key)
+            if val is not None and val > 30:
+                groups[key].append(val)
+
+    return {
+        key: (round(sum(vals) / len(vals)) if vals else None)
+        for key, vals in [
+            ("q1_q2",   groups.get("q1_q2",   [])),
+            ("halftime", groups.get("halftime", [])),
+            ("q3_q4",   groups.get("q3_q4",   [])),
+        ]
+    }
+
+
 def profile_summary(profile: dict) -> str:
     """Return a human-readable summary of a loaded RTF profile."""
     if not profile:

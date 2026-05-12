@@ -3,9 +3,9 @@
   "league": "jr_mpbl",
   "team": "jt",
   "opponent": "sj",
-  "date": "2026-05-11",
+  "date": "2026-05-12",
   "period_length": 10,
-  "anchor_count": 15,
+  "anchor_count": 29,
   "segments": [
     {
       "quarter": 1,
@@ -97,11 +97,88 @@
       "clock_to": "02:34",
       "rtf": 1.638,
       "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "10:00",
+      "clock_to": "09:32",
+      "rtf": 0.964,
+      "bucket": "early"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "09:32",
+      "clock_to": "06:32",
+      "rtf": 1.389,
+      "bucket": "early"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "06:32",
+      "clock_to": "06:08",
+      "rtf": 1.917,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "06:08",
+      "clock_to": "05:40",
+      "rtf": 1.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "05:40",
+      "clock_to": "05:29",
+      "rtf": 1.0,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "05:29",
+      "clock_to": "03:21",
+      "rtf": 1.641,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "03:21",
+      "clock_to": "02:46",
+      "rtf": 1.229,
+      "bucket": "late"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "01:43",
+      "clock_to": "00:27",
+      "rtf": 2.145,
+      "bucket": "late"
+    },
+    {
+      "quarter": 3,
+      "clock_from": "00:27",
+      "clock_to": "00:17",
+      "rtf": 0.9,
+      "bucket": "crunch"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "08:54",
+      "clock_to": "07:48",
+      "rtf": 2.576,
+      "bucket": "early"
+    },
+    {
+      "quarter": 4,
+      "clock_from": "07:48",
+      "clock_to": "06:47",
+      "rtf": 1.328,
+      "bucket": "mid"
     }
   ],
   "breaks": {
     "q1_q2": 227,
-    "halftime": null,
+    "halftime": 713,
     "q3_q4": null
   }
 }

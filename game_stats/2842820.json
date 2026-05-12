@@ -1,0 +1,114 @@
+{
+  "game_id": "2842820",
+  "league": "jr_mpbl",
+  "team": "jt",
+  "opponent": "sj",
+  "date": "2026-05-12",
+  "period_length": 10,
+  "anchor_count": 15,
+  "segments": [
+    {
+      "quarter": 1,
+      "clock_from": "10:00",
+      "clock_to": "06:59",
+      "rtf": 1.392,
+      "bucket": "early"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:59",
+      "clock_to": "06:10",
+      "rtf": 1.184,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "06:10",
+      "clock_to": "05:14",
+      "rtf": 0.982,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "05:14",
+      "clock_to": "04:06",
+      "rtf": 1.059,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "04:06",
+      "clock_to": "02:42",
+      "rtf": 1.179,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "02:42",
+      "clock_to": "01:34",
+      "rtf": 2.75,
+      "bucket": "late"
+    },
+    {
+      "quarter": 1,
+      "clock_from": "01:34",
+      "clock_to": "00:05",
+      "rtf": 2.292,
+      "bucket": "late"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "10:00",
+      "clock_to": "07:31",
+      "rtf": 1.53,
+      "bucket": "early"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "07:31",
+      "clock_to": "07:14",
+      "rtf": 0.941,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "07:14",
+      "clock_to": "07:00",
+      "rtf": 6.357,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "07:00",
+      "clock_to": "06:27",
+      "rtf": 0.939,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "06:27",
+      "clock_to": "02:57",
+      "rtf": 1.633,
+      "bucket": "mid"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "02:57",
+      "clock_to": "01:25",
+      "rtf": 1.348,
+      "bucket": "late"
+    },
+    {
+      "quarter": 2,
+      "clock_from": "01:25",
+      "clock_to": "00:49",
+      "rtf": 0.972,
+      "bucket": "late"
+    }
+  ],
+  "breaks": {
+    "q1_q2": 82,
+    "halftime": null,
+    "q3_q4": null
+  }
+}

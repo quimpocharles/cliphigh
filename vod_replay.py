@@ -56,8 +56,9 @@ log = logging.getLogger("vod_replay")
 
 VOD_FILE = os.path.join(config.RECORDING_DIR, "stream.mp4")
 
-# RTF profile loaded once per run from game_stats/*.json
-_rtf_profile: Optional[dict] = None
+# RTF and break profiles loaded once per run from game_stats/*.json
+_rtf_profile:   Optional[dict] = None
+_break_profile: Optional[dict] = None
 
 
 def _get_rtf_profile() -> dict:
@@ -65,6 +66,13 @@ def _get_rtf_profile() -> dict:
     if _rtf_profile is None:
         _rtf_profile = game_stats.load_profile(config.LEAGUE)
     return _rtf_profile
+
+
+def _get_break_profile() -> dict:
+    global _break_profile
+    if _break_profile is None:
+        _break_profile = game_stats.load_break_profile(config.LEAGUE)
+    return _break_profile
 
 
 # ── Anchor table ─────────────────────────────────────────────────────────────
@@ -143,10 +151,15 @@ def _extrapolate(v_last: float, a_last: int, target_abs: int,
         extra += step * rtf
         a = next_stop
 
-        # If we just finished a quarter and haven't reached target yet, add break
+        # If we just finished a quarter and haven't reached target yet, add break.
+        # Prefer the league-average learned from game_stats/; fall back to config.
         if a == q_end_abs and a < target_abs:
-            extra += (config.HALFTIME_BREAK_SECONDS if q == 2
-                      else config.QUARTER_BREAK_SECONDS)
+            breaks = _get_break_profile()
+            key = "halftime" if q == 2 else ("q1_q2" if q == 1 else "q3_q4")
+            learned = breaks.get(key)
+            extra += (learned if learned is not None else
+                      (config.HALFTIME_BREAK_SECONDS if q == 2
+                       else config.QUARTER_BREAK_SECONDS))
 
     return v_last + extra
 
@@ -418,6 +431,12 @@ def main():
     else:
         log.info("  RTF profile: none yet — using REAL_TIME_FACTOR=%.1f fallback",
                  config.REAL_TIME_FACTOR)
+    breaks = _get_break_profile()
+    def _fmt_break(v): return f"{v}s" if v is not None else "?"
+    log.info("  Break profile (learned):  Q1→Q2=%s  halftime=%s  Q3→Q4=%s",
+             _fmt_break(breaks.get("q1_q2")),
+             _fmt_break(breaks.get("halftime")),
+             _fmt_break(breaks.get("q3_q4")))
     log.info("═" * 60)
 
     # ── Fetch pbp data ────────────────────────────────────────────────────────
@@ -553,8 +572,9 @@ def main():
         # "Updated estimates" display below uses the freshest data
         stats_path = game_stats.save(config)
         log.info("Game stats saved → %s", stats_path)
-        global _rtf_profile
-        _rtf_profile = None   # force reload with new anchors included
+        global _rtf_profile, _break_profile
+        _rtf_profile   = None   # force reload with new anchors included
+        _break_profile = None
 
         print("\n  Updated estimates:")
         for evt in sikat_events:
